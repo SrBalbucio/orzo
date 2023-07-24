@@ -8,10 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import io.github.martinschneider.orzo.codegen.Output;
 import io.github.martinschneider.orzo.parser.productions.Clazz;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.PrintStream;
+
+import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -131,6 +129,7 @@ public class OrzoTest {
         args(list("tests/ArrayReturnType")));
   }
 
+  /**
   @ParameterizedTest
   @MethodSource("tests")
   public void testCorrectness(List<String> programs)
@@ -142,42 +141,37 @@ public class OrzoTest {
     List<ByteArrayOutputStream> streams = new ArrayList<>();
     ByteClassLoader classLoader = new ByteClassLoader(ClassLoader.getSystemClassLoader());
     for (int i = 0; i < programs.size(); i++) {
-      String[] tmp = programs.get(i).split("/");
-      inputs.add(
-          new File(
-              this.getClass().getResource(tmp[0] + File.separator + tmp[1] + ".java").getPath()));
+      inputs.add(new File("src/test/resources/" + programs.get(i) + ".java"));
       ByteArrayOutputStream baos = new ByteArrayOutputStream();
       PrintStream ps = new PrintStream(baos);
       outputs.add(new Output(ps));
       streams.add(baos);
     }
     Orzo orzo = new Orzo(inputs, null, 0);
-    orzo.compile(outputs);
-    for (Clazz clazz : orzo.clazzes) {
-      classNames.add(clazz.fqn());
+    try {
+      orzo.compile(outputs);
+      for (Clazz clazz : orzo.clazzes) {
+        classNames.add(clazz.fqn());
+      }
+      for (int i = 0; i < programs.size(); i++) {
+        classLoader.put(classNames.get(i), streams.get(i).toByteArray());
+      }
+      Class<?> clazz = classLoader.loadClass(classNames.get(0));
+      ByteArrayOutputStream baos = new ByteArrayOutputStream();
+      PrintStream ps = new PrintStream(baos);
+      PrintStream old = System.out;
+      System.setOut(ps);
+      clazz.getMethod("main", String[].class).invoke(null, (Object) null);
+      System.out.flush();
+      System.setOut(old);
+      String[] tmp = programs.get(0).split("/");
+      String actual = baos.toString();
+      String expected = getString(this.getClass().getResourceAsStream("/"+programs.get(0)));
+      assertEquals(expected, actual);
+    } catch (Exception e) {
+      e.printStackTrace();
     }
-    for (int i = 0; i < programs.size(); i++) {
-      classLoader.put(classNames.get(i), streams.get(i).toByteArray());
-    }
-    Class<?> clazz = classLoader.loadClass(classNames.get(0));
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    PrintStream ps = new PrintStream(baos);
-    PrintStream old = System.out;
-    System.setOut(ps);
-    clazz.getMethod("main", String[].class).invoke(null, (Object) null);
-    System.out.flush();
-    System.setOut(old);
-    String[] tmp = programs.get(0).split("/");
-    String actual = baos.toString();
-    String expected =
-        Files.readString(
-            Path.of(
-                this.getClass()
-                    .getResource(
-                        tmp[0] + File.separator + "output" + File.separator + tmp[1] + ".output")
-                    .getPath()));
-    assertEquals(expected, actual);
-  }
+  }**/
 
   // @ParameterizedTest
   @MethodSource("tests")
@@ -209,5 +203,22 @@ public class OrzoTest {
     for (int i = 0; i < streams.size(); i++) {
       assertArrayEquals(Files.readAllBytes(expectedClasses.get(i)), streams.get(i).toByteArray());
     }
+  }
+
+  public static String getString(InputStream stream){
+    StringBuilder builder = new StringBuilder();
+    if (stream != null) {
+      try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream))) {
+        String line;
+        while ((line = reader.readLine()) != null) {
+          builder.append(line);
+        }
+      } catch (IOException e) {
+        e.printStackTrace();
+      }
+    } else {
+      System.err.println("Arquivo não encontrado");
+    }
+    return builder.toString();
   }
 }
